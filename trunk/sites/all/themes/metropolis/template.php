@@ -17,6 +17,8 @@ function metropolis_preprocess_html(&$vars) {
 }
 
 function metropolis_preprocess_page(&$vars, $hook) {
+  /*
 	$notice = '<div style="clear:both; font-size:11px; text-align:center;"><em>Theme provided by <a href="http://drupalbycity.com" target="_blank">DrupalByCity</a> under GLP license from <a href="http://www.comprendo.dk">Comprendo</a></em></div>';
 	$vars['notice'] = $notice;
+  */
 }

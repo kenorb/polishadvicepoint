@@ -1,49 +1,6 @@
 <?php 
 ?>
 <div id="page-wrapper">
-		<div id="header-wrapper">
-			<div id="header"> 
-					<div id="branding-wrapper">
-						<div class="branding">
-							<?php if ($logo): ?>
-								<div class="logo">
-									<a href="<?php print $base_path ?>" title="<?php print t('Home') ?>"><img src="<?php print $logo ?>" alt="<?php print t('Home') ?>" /></a>
-								</div> <!-- end logo -->
-							<?php endif; ?>
-							<div class="name-slogan-wrapper">
-							<?php if ($site_name) : ?>
-								<?php if ($is_front) : ?>
-									<h1 class="site-name"><a href="<?php print $base_path ?>" title="<?php print $site_name ?>"><?php print $site_name ?></a></h1>
-								<?php endif; ?>
-								<?php if (!$is_front) : ?>
-									<h2 class="site-name"><a href="<?php print $base_path ?>" title="<?php print $site_name ?>"><?php print $site_name ?></a></h2>
-								<?php endif; ?>
-							<?php endif; ?>
-							<?php if ($site_slogan) : ?>
-								<span class='site-slogan'><?php print $site_slogan; ?></span>
-							<?php endif; ?>
-							</div> <!-- end site-name + site-slogan wrapper -->
-						</div>
-					</div> <!-- end branding wrapper -->
-				<?php if ($feed_icons): ?>
-					<div class="feed-wrapper">
-						<?php print $feed_icons; ?>
-					</div> <!-- end feed wrapper -->
-				<?php endif; ?>
-				<div id="authorize">
-					<ul>
-						<?php global $user; 
-							if ($user->uid != 0) {
-								print '<li class="first">' .t('Logged in as '). '<a href="' .url('user/'.$user->uid). '">' .$user->name. '</a></li>';
-								print '<li class="last"><a href="' .url('user/logout'). '">' .t('Logout'). '</a></li>'; } 
-							else {
-								print '<li class="first"><a href="' .url('user'). '">' .t('Login'). '</a></li>';
-								print '<li class="last"><a href="' .url('user/register'). '">' .t('Register'). '</a></li>'; }
-								?>
-					</ul>
-				</div> <!-- end authorize -->
-			</div> <!-- end header -->
-		</div> <!-- end header wrapper -->
 		
 		<div id="container-wrapper">
 			<div id="container-outer">
@@ -165,7 +122,7 @@
 					<?php print theme('links__system_secondary_menu', array('links' => $secondary_menu, 'attributes' => array('class' => array('links', 'clearfix')))); ?>
 				</div>
 			<?php endif; ?>
-			<?php print $notice; ?>
+			<?php // print $notice; ?>
 		</div> <!-- end footer -->
 			
 </div> <!-- end page wrapper -->
