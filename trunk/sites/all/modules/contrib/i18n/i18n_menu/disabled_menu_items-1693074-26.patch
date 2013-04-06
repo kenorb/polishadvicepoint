@@ -1,0 +1,17 @@
+diff --git a/i18n_menu/i18n_menu.module b/i18n_menu/i18n_menu.module
+index df670e5..16c89ac 100644
+--- a/i18n_menu/i18n_menu.module
++++ b/i18n_menu/i18n_menu.module
+@@ -566,6 +566,12 @@ function _i18n_menu_link_is_localizable($link, $check_strings = FALSE) {
+  * Check whether this menu link is visible for current/given language.
+  */
+ function _i18n_menu_link_is_visible($link, $langcode = NULL) {
++  if (arg(0) == 'node' && arg(2) == 'edit') {
++    $query = db_select('node', 'n');
++    $query->addField('n', 'language');
++    $query->condition('n.nid', arg(1));
++    $langcode = $query->execute()->fetchField();
++  }
+   $langcode = $langcode ? $langcode : i18n_language_interface()->language;
+   return $link['language'] == LANGUAGE_NONE || $link['language'] == $langcode;
+ }

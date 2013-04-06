@@ -1,0 +1,55 @@
+<?php
+/**
+ * @file
+ * Internationalization SEO - hreflang support
+ */
+
+/**
+ * Implements hook_init().
+ */
+function i18n_hreflang_init() {
+  // Get path and translations
+  $path = drupal_is_front_page() ? '<front>' : $_GET['q'];
+  $translations = i18n_get_path_translations($path);
+  unset($translations[i18n_langcode()]);
+  // Get alternate urls if we've got translations.
+  if ($translations) {
+    foreach($translations as $lang => $translation) {
+      $attributes = array(
+        'href' => url($translation['href'], $translation + array('language' => i18n_language($lang))),
+        'rel' => 'alternate',
+        'hreflang' => $lang,
+        'title' => isset($translation['title']) ? $translation['title'] : i18n_language_name($lang),
+      );
+      drupal_add_html_head_link($attributes);
+    }
+  }
+}
+
+/**
+ * Implements hook_i18n_translate_path().
+ * 
+ * Provides translation for front page.
+ */
+function i18n_hreflang_i18n_translate_path($path) {
+  if ($path == '<front>') {
+    $languages = language_list('enabled');
+    $links = array();
+    foreach ($languages[1] as $language) {
+      $links[$language->language] = array(
+        'href'       => $path,
+        'title'      => $language->native,
+      );
+    }
+    return $links;
+  }
+}
+
+/**
+ * Implements hook_language_switch_links_alter().
+ */
+function i18n_hreflang_language_switch_links_alter(array &$links, $type, $path) {
+  foreach ($links as $langcode => &$link) {
+    $link['attributes']['hreflang'] = $langcode;
+  }
+}

@@ -1,0 +1,29 @@
+<?php
+/**
+ * @file
+ * Drupal module - multilingual menu select
+ *
+ * This module may conflict with others displaying lists of nodes, node reference fields,
+ * i18n synchronization, etc... It is here only for backwards compatibility with previous
+ * versions of i18n, see http://drupal.org/node/1675830
+ */
+
+
+/**
+ * Implements hook_query_node_access_alter().
+ *
+ * Rewrite node queries so language selection options are enforced.
+ *
+ * Unlike the original function in Multilingual select module this doesn't skip queries
+ * that load specific nodes, the ones that have 'nid IN' conditions
+ *
+ * @see i18n_select_query_node_access_alter()
+ */
+function i18n_menu_select_query_node_access_alter(QueryAlterableInterface $query) {
+  if (i18n_select_mode('nodes') && i18n_select_check_query($query, NULL) &&
+    ($table_alias = i18n_select_check_table($query, 'node', 'nid'))) {
+    $query->condition($table_alias . '.language', i18n_select_langcodes());
+    // Mark query as altered
+    $query->addTag('i18n_select');
+  }
+}

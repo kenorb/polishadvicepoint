@@ -1,0 +1,13 @@
+name = Multilingual select menu filter
+description = Filters node items from menus by language using node access (Unsupported module, just for backwards compatibility)
+dependencies[] = i18n_menu
+dependencies[] = i18n_select
+package = Multilingual - Internationalization
+core = 7.x
+
+; Information added by drupal.org packaging script on 2012-07-19
+version = "7.x-1.0-alpha1"
+core = "7.x"
+project = "i18n_contrib"
+datestamp = "1342693893"
+

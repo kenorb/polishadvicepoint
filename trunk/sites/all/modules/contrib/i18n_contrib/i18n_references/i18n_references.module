@@ -1,0 +1,54 @@
+<?php
+/**
+ * @file
+ * Drupal module. Synchronize node-reference fields.
+ *
+ * See http://drupal.org/node/1046234
+ */
+
+/**
+ * Implements hook_field_info_alter().
+ */
+function i18n_references_field_info_alter(&$fields) {
+  if (isset($fields['node_reference'])) {
+    $fields['node_reference']['i18n_sync_callback'] = 'i18n_references_field_node_reference_sync';
+  }
+}
+
+/**
+ * Sync a node reference field (i18n_sync_callback)
+ */
+function i18n_references_field_node_reference_sync($entity_type, $entity, $field, $instance, $langcode, &$items, $source_entity, $source_language) {
+  foreach ($items as $delta => &$reference) {
+    if ($reference_node = node_load($reference['nid'])) {
+      $reference['nid'] = i18n_references_node_reference_translate_field($reference_node, $reference['nid'], $langcode);
+    }
+  }
+}
+
+/**
+ * Helper function for translating node reference field.
+ *
+ * We try to use node translations for reference, otherwise fallback to default value.
+ *
+ * Example:
+ *   English A references English B and English C.
+ *   English A and B are translated to German A and B, but English C is not.
+ *   The syncronization from English A to German A would reference German B and English C.
+ */
+function i18n_references_node_reference_translate_field(&$reference_node, $default_value, $langcode) {
+  if (isset($reference_node->tnid) && translation_supported_type($reference_node->type)) {
+    // This content type has translations, find the one.
+    if (($reference_trans = translation_node_get_translations($reference_node->tnid)) && isset($reference_trans[$langcode])) {
+      return $reference_trans[$langcode]->nid;
+    }
+    else {
+      // No requested language found, just copy the field.
+      return $default_value;
+    }
+  }
+  else {
+    // Content type without language, just copy the field.
+    return $default_value;
+  }
+}
