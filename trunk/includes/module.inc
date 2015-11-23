@@ -265,11 +265,11 @@ function _module_build_dependencies($files) {
 /**
  * Determines whether a given module exists.
  *
- * @param $module
+ * @param string $module
  *   The name of the module (without the .module extension).
  *
- * @return
- *   TRUE if the module is both installed and enabled.
+ * @return bool
+ *   TRUE if the module is both installed and enabled, FALSE otherwise.
  */
 function module_exists($module) {
   $list = module_list();
@@ -610,8 +610,39 @@ function module_disable($module_list, $disable_dependents = TRUE) {
  * just models that you can modify. Only the hooks implemented within modules
  * are executed when running Drupal.
  *
- * See also @link themeable the themeable group page. @endlink
+ * @see themeable
+ * @see callbacks
  */
+
+ /**
+  * @defgroup callbacks Callbacks
+  * @{
+  * Callback function signatures.
+  *
+  * Drupal's API sometimes uses callback functions to allow you to define how
+  * some type of processing happens. A callback is a function with a defined
+  * signature, which you define in a module. Then you pass the function name as
+  * a parameter to a Drupal API function or return it as part of a hook
+  * implementation return value, and your function is called at an appropriate
+  * time. For instance, when setting up batch processing you might need to
+  * provide a callback function for each processing step and/or a callback for
+  * when processing is finished; you would do that by defining these functions
+  * and passing their names into the batch setup function.
+  *
+  * Callback function signatures, like hook definitions, are described by
+  * creating and documenting dummy functions in a *.api.php file; normally, the
+  * dummy callback function's name should start with "callback_", and you should
+  * document the parameters and return value and provide a sample function body.
+  * Then your API documentation can refer to this callback function in its
+  * documentation. A user of your API can usually name their callback function
+  * anything they want, although a standard name would be to replace "callback_"
+  * with the module name.
+  *
+  * @see hooks
+  * @see themeable
+  *
+  * @}
+  */
 
 /**
  * Determines whether a module implements a hook.
@@ -645,12 +676,16 @@ function module_hook($module, $hook) {
 /**
  * Determines which modules are implementing a hook.
  *
- * @param $hook
+ * Lazy-loaded include files specified with "group" via hook_hook_info() or
+ * hook_module_implements_alter() will be automatically included by this
+ * function when necessary.
+ *
+ * @param string $hook
  *   The name of the hook (e.g. "help" or "menu").
- * @param $sort
+ * @param bool $sort
  *   By default, modules are ordered by weight and filename, settings this option
  *   to TRUE, module list will be ordered by module name.
- * @param $reset
+ * @param bool $reset
  *   For internal use only: Whether to force the stored list of hook
  *   implementations to be regenerated (such as after enabling a new module,
  *   before processing hook_enable).
@@ -665,8 +700,10 @@ function module_implements($hook, $sort = FALSE, $reset = FALSE) {
   static $drupal_static_fast;
   if (!isset($drupal_static_fast)) {
     $drupal_static_fast['implementations'] = &drupal_static(__FUNCTION__);
+    $drupal_static_fast['verified'] = &drupal_static(__FUNCTION__ . ':verified');
   }
   $implementations = &$drupal_static_fast['implementations'];
+  $verified = &$drupal_static_fast['verified'];
 
   // We maintain a persistent cache of hook implementations in addition to the
   // static cache to avoid looping through every module and every hook on each
@@ -680,6 +717,7 @@ function module_implements($hook, $sort = FALSE, $reset = FALSE) {
   // per request.
   if ($reset) {
     $implementations = array();
+    $verified = array();
     cache_set('module_implements', array(), 'cache_bootstrap');
     drupal_static_reset('module_hook_info');
     drupal_static_reset('drupal_alter');
@@ -688,6 +726,9 @@ function module_implements($hook, $sort = FALSE, $reset = FALSE) {
   }
 
   // Fetch implementations from cache.
+  // This happens on the first call to module_implements(*, *, FALSE) during a
+  // request, but also when $implementations have been reset, e.g. after
+  // module_enable().
   if (empty($implementations)) {
     $implementations = cache_get('module_implements', 'cache_bootstrap');
     if ($implementations === FALSE) {
@@ -696,12 +737,17 @@ function module_implements($hook, $sort = FALSE, $reset = FALSE) {
     else {
       $implementations = $implementations->data;
     }
+    // Forget all previously "verified" hooks, in case that $implementations
+    // were cleared via drupal_static_reset('module_implements') instead of
+    // module_implements(*, *, TRUE).
+    $verified = array();
   }
 
   if (!isset($implementations[$hook])) {
     // The hook is not cached, so ensure that whether or not it has
     // implementations, that the cache is updated at the end of the request.
     $implementations['#write_cache'] = TRUE;
+    // Discover implementations for this hook.
     $hook_info = module_hook_info();
     $implementations[$hook] = array();
     $list = module_list(FALSE, FALSE, $sort);
@@ -713,13 +759,31 @@ function module_implements($hook, $sort = FALSE, $reset = FALSE) {
         $implementations[$hook][$module] = $include_file ? $hook_info[$hook]['group'] : FALSE;
       }
     }
-    // Allow modules to change the weight of specific implementations but avoid
+    // Allow modules to change the weight of specific implementations, but avoid
     // an infinite loop.
     if ($hook != 'module_implements_alter') {
+      // Remember the implementations before hook_module_implements_alter().
+      $implementations_before = $implementations[$hook];
       drupal_alter('module_implements', $implementations[$hook], $hook);
+      // Verify implementations that were added or modified.
+      foreach (array_diff_assoc($implementations[$hook], $implementations_before) as $module => $group) {
+        // If drupal_alter('module_implements') changed or added a $group, the
+        // respective file needs to be included.
+        if ($group) {
+          module_load_include('inc', $module, "$module.$group");
+        }
+        // If a new implementation was added, verify that the function exists.
+        if (!function_exists($module . '_' . $hook)) {
+          unset($implementations[$hook][$module]);
+        }
+      }
     }
+    // Implementations for this hook are now "verified".
+    $verified[$hook] = TRUE;
   }
-  else {
+  elseif (!isset($verified[$hook])) {
+    // Implementations for this hook were in the cache, but they are not
+    // "verified" yet.
     foreach ($implementations[$hook] as $module => $group) {
       // If this hook implementation is stored in a lazy-loaded file, so include
       // that file first.
@@ -738,6 +802,7 @@ function module_implements($hook, $sort = FALSE, $reset = FALSE) {
         $implementations['#write_cache'] = TRUE;
       }
     }
+    $verified[$hook] = TRUE;
   }
 
   return array_keys($implementations[$hook]);
@@ -802,11 +867,13 @@ function module_hook_info() {
  * @see module_implements()
  */
 function module_implements_write_cache() {
+  // The list of implementations includes vital modules only before full
+  // bootstrap, so do not write cache if we are not fully bootstrapped yet.
+  if (drupal_get_bootstrap_phase() != DRUPAL_BOOTSTRAP_FULL) {
+    return;
+  }
   $implementations = &drupal_static('module_implements');
-  // Check whether we need to write the cache. We do not want to cache hooks
-  // which are only invoked on HTTP POST requests since these do not need to be
-  // optimized as tightly, and not doing so keeps the cache entry smaller.
-  if (isset($implementations['#write_cache']) && ($_SERVER['REQUEST_METHOD'] == 'GET' || $_SERVER['REQUEST_METHOD'] == 'HEAD')) {
+  if (isset($implementations['#write_cache'])) {
     unset($implementations['#write_cache']);
     cache_set('module_implements', $implementations, 'cache_bootstrap');
   }
@@ -814,6 +881,9 @@ function module_implements_write_cache() {
 
 /**
  * Invokes a hook in a particular module.
+ *
+ * All arguments are passed by value. Use drupal_alter() if you need to pass
+ * arguments by reference.
  *
  * @param $module
  *   The name of the module (without the .module extension).
@@ -824,6 +894,8 @@ function module_implements_write_cache() {
  *
  * @return
  *   The return value of the hook implementation.
+ *
+ * @see drupal_alter()
  */
 function module_invoke($module, $hook) {
   $args = func_get_args();
@@ -837,6 +909,9 @@ function module_invoke($module, $hook) {
 /**
  * Invokes a hook in all enabled modules that implement it.
  *
+ * All arguments are passed by value. Use drupal_alter() if you need to pass
+ * arguments by reference.
+ *
  * @param $hook
  *   The name of the hook to invoke.
  * @param ...
@@ -845,6 +920,8 @@ function module_invoke($module, $hook) {
  * @return
  *   An array of return values of the hook implementations. If modules return
  *   arrays from their implementations, those are merged into one array.
+ *
+ * @see drupal_alter()
  */
 function module_invoke_all($hook) {
   $args = func_get_args();
@@ -898,9 +975,10 @@ function drupal_required_modules() {
  * hook_TYPE_alter() implementations in modules. It ensures a consistent
  * interface for all altering operations.
  *
- * A maximum of 2 alterable arguments is supported. In case more arguments need
- * to be passed and alterable, modules provide additional variables assigned by
- * reference in the last $context argument:
+ * A maximum of 2 alterable arguments is supported (a third is supported for
+ * legacy reasons, but should not be used in new code). In case more arguments
+ * need to be passed and alterable, modules provide additional variables
+ * assigned by reference in the last $context argument:
  * @code
  *   $context = array(
  *     'alterable' => &$alterable,
@@ -939,8 +1017,14 @@ function drupal_required_modules() {
  *   (optional) An additional variable that is passed by reference. If more
  *   context needs to be provided to implementations, then this should be an
  *   associative array as described above.
+ * @param $context3
+ *   (optional) An additional variable that is passed by reference. This
+ *   parameter is deprecated and will not exist in Drupal 8; consequently, it
+ *   should not be used for new Drupal 7 code either. It is here only for
+ *   backwards compatibility with older code that passed additional arguments
+ *   to drupal_alter().
  */
-function drupal_alter($type, &$data, &$context1 = NULL, &$context2 = NULL) {
+function drupal_alter($type, &$data, &$context1 = NULL, &$context2 = NULL, &$context3 = NULL) {
   // Use the advanced drupal_static() pattern, since this is called very often.
   static $drupal_static_fast;
   if (!isset($drupal_static_fast)) {
@@ -1053,6 +1137,6 @@ function drupal_alter($type, &$data, &$context1 = NULL, &$context2 = NULL) {
   }
 
   foreach ($functions[$cid] as $function) {
-    $function($data, $context1, $context2);
+    $function($data, $context1, $context2, $context3);
   }
 }

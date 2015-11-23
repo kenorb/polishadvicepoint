@@ -229,12 +229,20 @@ define('MENU_CONTEXT_INLINE', 0x0002);
 define('MENU_FOUND', 1);
 
 /**
- * Internal menu status code -- Menu item was not found.
+ * Menu status code -- Not found.
+ *
+ * This can be used as the return value from a page callback, although it is
+ * preferable to use a load function to accomplish this; see the hook_menu()
+ * documentation for details.
  */
 define('MENU_NOT_FOUND', 2);
 
 /**
- * Internal menu status code -- Menu item access is denied.
+ * Menu status code -- Access denied.
+ *
+ * This can be used as the return value from a page callback, although it is
+ * preferable to use an access callback to accomplish this; see the hook_menu()
+ * documentation for details.
  */
 define('MENU_ACCESS_DENIED', 3);
 
@@ -309,7 +317,7 @@ define('MENU_PREFERRED_LINK', '1cf698d64d1aa4b83907cf6ed55db3a7f8e92c91');
  * actually exists. This list of 'masks' is built in menu_rebuild().
  *
  * @param $parts
- *   An array of path parts, for the above example
+ *   An array of path parts; for the above example, 
  *   array('node', '12345', 'edit').
  *
  * @return
@@ -430,8 +438,8 @@ function menu_set_item($path, $router_item) {
  * Gets a router item.
  *
  * @param $path
- *   The path, for example node/5. The function will find the corresponding
- *   node/% item and return that.
+ *   The path; for example, 'node/5'. The function will find the corresponding
+ *   node/% item and return that. Defaults to the current path.
  * @param $router_item
  *   Internal use only.
  *
@@ -456,7 +464,9 @@ function menu_get_item($path = NULL, $router_item = NULL) {
     // Rebuild if we know it's needed, or if the menu masks are missing which
     // occurs rarely, likely due to a race condition of multiple rebuilds.
     if (variable_get('menu_rebuild_needed', FALSE) || !variable_get('menu_masks', array())) {
-      menu_rebuild();
+      if (_menu_check_rebuild()) {
+        menu_rebuild();
+      }
     }
     $original_map = arg(NULL, $path);
 
@@ -542,7 +552,7 @@ function menu_execute_active_handler($path = NULL, $deliver = TRUE) {
  * @param $item
  *   A menu router or menu link item
  * @param $map
- *   An array of path arguments (ex: array('node', '5'))
+ *   An array of path arguments; for example, array('node', '5').
  *
  * @return
  *   Returns TRUE for success, FALSE if an object cannot be loaded.
@@ -612,12 +622,13 @@ function _menu_load_objects(&$item, &$map) {
  * @param $item
  *   A menu router or menu link item
  * @param $map
- *   An array of path arguments (ex: array('node', '5'))
+ *   An array of path arguments; for example, array('node', '5').
  *
  * @return
  *   $item['access'] becomes TRUE if the item is accessible, FALSE otherwise.
  */
 function _menu_check_access(&$item, $map) {
+  $item['access'] = FALSE;
   // Determine access callback, which will decide whether or not the current
   // user has access to this path.
   $callback = empty($item['access_callback']) ? 0 : trim($item['access_callback']);
@@ -737,7 +748,7 @@ function _menu_item_localize(&$item, $map, $link_translate = FALSE) {
  * @param $router_item
  *   A menu router item
  * @param $map
- *   An array of path arguments (ex: array('node', '5'))
+ *   An array of path arguments; for example, array('node', '5').
  * @param $to_arg
  *   Execute $item['to_arg_functions'] or not. Use only if you want to render a
  *   path from the menu table, for example tabs.
@@ -800,9 +811,9 @@ function _menu_translate(&$router_item, $map, $to_arg = FALSE) {
  * Translates the path elements in the map using any to_arg helper function.
  *
  * @param $map
- *   An array of path arguments (ex: array('node', '5'))
+ *   An array of path arguments; for example, array('node', '5').
  * @param $to_arg_functions
- *   An array of helper function (ex: array(2 => 'menu_tail_to_arg'))
+ *   An array of helper functions; for example, array(2 => 'menu_tail_to_arg').
  *
  * @see hook_menu()
  */
@@ -999,7 +1010,7 @@ function menu_tree($menu_name) {
 }
 
 /**
- * Returns a rendered menu tree.
+ * Returns an output structure for rendering a menu tree.
  *
  * The menu item's LI element is given one of the following classes:
  * - expanded: The menu item is showing its submenu.
@@ -1484,7 +1495,7 @@ function menu_tree_collect_node_links(&$tree, &$node_links) {
  *   menu_tree_collect_node_links().
  */
 function menu_tree_check_access(&$tree, $node_links = array()) {
-  if ($node_links) {
+  if ($node_links && (user_access('access content') || user_access('bypass node access'))) {
     $nids = array_keys($node_links);
     $select = db_select('node', 'n');
     $select->addField('n', 'nid');
@@ -1925,13 +1936,21 @@ function menu_local_tasks($level = 0) {
     }
 
     // Get all tabs (also known as local tasks) and the root page.
-    $result = db_select('menu_router', NULL, array('fetch' => PDO::FETCH_ASSOC))
-      ->fields('menu_router')
-      ->condition('tab_root', $router_item['tab_root'])
-      ->condition('context', MENU_CONTEXT_INLINE, '<>')
-      ->orderBy('weight')
-      ->orderBy('title')
-      ->execute();
+    $cid = 'local_tasks:' . $router_item['tab_root'];
+    if ($cache = cache_get($cid, 'cache_menu')) {
+      $result = $cache->data;
+    }
+    else {
+      $result = db_select('menu_router', NULL, array('fetch' => PDO::FETCH_ASSOC))
+        ->fields('menu_router')
+        ->condition('tab_root', $router_item['tab_root'])
+        ->condition('context', MENU_CONTEXT_INLINE, '<>')
+        ->orderBy('weight')
+        ->orderBy('title')
+        ->execute()
+        ->fetchAll();
+      cache_set($cid, $result, 'cache_menu');
+    }
     $map = $router_item['original_map'];
     $children = array();
     $tasks = array();
@@ -2138,7 +2157,7 @@ function menu_local_tasks($level = 0) {
  *   example 'node' or 'admin/structure/block/manage'.
  * @param $args
  *   A list of dynamic path arguments to append to $parent_path to form the
- *   fully-qualified menu router path, for example array(123) for a certain
+ *   fully-qualified menu router path; for example, array(123) for a certain
  *   node or array('system', 'navigation') for a certain block.
  *
  * @return
@@ -2429,7 +2448,7 @@ function menu_set_active_trail($new_trail = NULL) {
  * Looks up the preferred menu link for a given system path.
  *
  * @param $path
- *   The path, for example 'node/5'. The function will find the corresponding
+ *   The path; for example, 'node/5'. The function will find the corresponding
  *   menu link ('node/5' if it exists, or fallback to 'node/%').
  * @param $selected_menu
  *   The name of a menu used to restrict the search for a preferred menu link.
@@ -2486,6 +2505,7 @@ function menu_link_get_preferred($path = NULL, $selected_menu = NULL) {
     $query->addField('ml', 'weight', 'link_weight');
     $query->fields('m');
     $query->condition('ml.link_path', $path_candidates, 'IN');
+    $query->addTag('preferred_menu_links');
 
     // Sort candidates by link path and menu name.
     $candidates = array();
@@ -2601,10 +2621,30 @@ function menu_get_active_breadcrumb() {
  */
 function menu_get_active_title() {
   $active_trail = menu_get_active_trail();
+  $local_task_title = NULL;
 
   foreach (array_reverse($active_trail) as $item) {
-    if (!(bool) ($item['type'] & MENU_IS_LOCAL_TASK)) {
-      return $item['title'];
+    // Local task titles are displayed as tabs and therefore should not be
+    // repeated as the page title. However, if the local task appears in a
+    // top-level menu, it is no longer a "local task" anymore (the front page
+    // of the site does not have tabs) so it is better to use the local task
+    // title in that case than to fall back on the front page link in the
+    // active trail (which is usually "Home" and would not make sense in this
+    // context).
+    if ((bool) ($item['type'] & MENU_IS_LOCAL_TASK)) {
+      // A local task title is being skipped; track it in case it needs to be
+      // used later.
+      $local_task_title = $item['title'];
+    }
+    else {
+      // This is not a local task, so use it for the page title (unless the
+      // conditions described above are met).
+      if (isset($local_task_title) && isset($item['href']) && $item['href'] == '<front>') {
+        return $local_task_title;
+      }
+      else {
+        return $item['title'];
+      }
     }
   }
 }
@@ -2684,6 +2724,21 @@ function menu_reset_static_cache() {
 }
 
 /**
+ * Checks whether a menu_rebuild() is necessary.
+ */
+function _menu_check_rebuild() {
+  // To absolutely ensure that the menu rebuild is required, re-load the
+  // variables in case they were set by another process.
+  $variables = variable_initialize();
+  if (empty($variables['menu_rebuild_needed']) && !empty($variables['menu_masks'])) {
+    unset($GLOBALS['conf']['menu_rebuild_needed']);
+    $GLOBALS['conf']['menu_masks'] = $variables['menu_masks'];
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
  * Populates the database tables used by various menu functions.
  *
  * This function will clear and populate the {menu_router} table, add entries
@@ -2703,6 +2758,14 @@ function menu_rebuild() {
     // We choose to block here since otherwise the router item may not
     // be available in menu_execute_active_handler() resulting in a 404.
     lock_wait('menu_rebuild');
+
+    if (_menu_check_rebuild()) {
+      // If we get here and menu_masks was not set, then it is possible a menu
+      // is being reloaded, or that the process rebuilding the menu was unable
+      // to complete successfully. A missing menu_masks variable could result
+      // in a 404, so re-run the function.
+      return menu_rebuild();
+    }
     return FALSE;
   }
 
@@ -2727,6 +2790,12 @@ function menu_rebuild() {
     $transaction->rollback();
     watchdog_exception('menu', $e);
   }
+  // Explicitly commit the transaction now; this ensures that the database
+  // operations during the menu rebuild are committed before the lock is made
+  // available again, since locks may not always reside in the same database
+  // connection. The lock is acquired outside of the transaction so should also
+  // be released outside of it.
+  unset($transaction);
 
   lock_release('menu_rebuild');
   return TRUE;
